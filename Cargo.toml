@@ -3,6 +3,7 @@ authors = ["Matti Virkkunen <mvirkkunen@gmail.com>"]
 edition = "2018"
 name = "serial-threadmark"
 version = "0.1.0"
+
 [dependencies]
-libc = "*"
 rand = "0.6.5"
+serialport = "3.3.0"

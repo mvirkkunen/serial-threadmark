@@ -1,8 +1,8 @@
 use std::env;
+use std::time::{Duration, Instant};
 use std::thread;
-use std::ffi::{c_void, CString};
-use libc;
 use rand::{Rng, distributions::Alphanumeric};
+use serialport;
 
 fn main() {
     let mut args = env::args();
@@ -21,26 +21,28 @@ fn main() {
     let tx_data = data.as_bytes().to_owned();
     let rx_data = data.to_ascii_uppercase().as_bytes().to_owned();
 
-    // extra spooky
-    let port = unsafe {
-        libc::open(
-            CString::new(path).unwrap().as_ptr(),
-            libc::O_RDWR | libc:O_NOCTTY)
-    };
-    if port <= 0 {
-        panic!("couldn't open port");
+    let mut tx_port = serialport::open(&path).unwrap();
+    tx_port.set_timeout(Duration::from_secs(1));
+
+    // Discard any buffered leftovers
+    loop {
+        match tx_port.read(&mut [0u8; 1024]) {
+            Ok(0) => break,
+            Err(ref err) if err.kind() == std::io::ErrorKind::TimedOut => break,
+            Err(err) => panic!(err),
+            _ => continue,
+        }
     }
 
-    unsafe { libc::tcflush(port, libc::TCIOFLUSH); }
+    let mut rx_port = tx_port.try_clone().unwrap();
+
+    let start = Instant::now();
 
     let writer = thread::spawn(move || {
         let mut total = 0;
         while total < tx_data.len() {
             let count = std::cmp::min(tx_data.len() - total, 1024);
-            let count = unsafe { libc::write(port, (&tx_data[total..total+count]).as_ptr() as *const c_void, count) };
-            if count < 0 {
-                panic!("write failed: {}", count);
-            }
+            let count = tx_port.write(&tx_data[total..total+count]).unwrap();
 
             total += count as usize;
 
@@ -55,10 +57,7 @@ fn main() {
         let mut buf = [0u8; 1024];
 
         while total < rx_data.len() {
-            let count = unsafe { libc::read(port, buf.as_mut_ptr() as *mut c_void, buf.len()) };
-            if count < 0 {
-                panic!("read failed at {} ({})", total, count);
-            }
+            let count = rx_port.read(&mut buf).unwrap();
 
             println!("read: {} / {}", total, rx_data.len());
 
@@ -77,4 +76,11 @@ fn main() {
 
     writer.join().unwrap();
     reader.join().unwrap();
+
+    let duration = start.elapsed();
+
+    let elapsed = duration.as_secs() as f64 + (duration.subsec_micros() as f64) * 0.000_001;
+    let throughput = (data_size * 8) as f64 / 1_000_000.0 / elapsed;
+
+    println!("Time elapsed: {:?}, throughput is {:.3} Mbit/s", duration, throughput);
 }
