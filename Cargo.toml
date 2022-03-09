@@ -2,8 +2,9 @@
 authors = ["Matti Virkkunen <mvirkkunen@gmail.com>"]
 edition = "2018"
 name = "serial-threadmark"
-version = "0.1.0"
+version = "0.2.0"
 
 [dependencies]
 rand = "0.6.5"
 serialport = "3.3.0"
+clap = {version = "3.1.6", features=["derive", "wrap_help"]}
